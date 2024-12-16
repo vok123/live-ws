@@ -3,7 +3,7 @@
 WebSocket that will automatically reconnect if the connection is closed.
 
 ## More docs
-[中文文档](https://github.com/vok123/live-ws/README-ZH_CN.md)
+[中文文档](https://github.com/vok123/live-ws/blob/main/README-ZH_CN.md)
 
 ## Features
 
