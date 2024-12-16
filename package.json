@@ -1,0 +1,48 @@
+{
+  "name": "live-ws",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsup --target es5",
+    "dev": "tsup --watch"
+  },
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs.js",
+      "import": "./dist/index.esm.js",
+      "default": "./dist/index.cjs.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vok123/live-ws.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vok123/live-ws/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "homepage": "https://github.com/vok123/live-ws#readme",
+  "keywords": [
+    "websocket",
+    "live",
+    "ws",
+    "reconnect",
+    "reconnection",
+    "heartbeat"
+  ],
+  "author": "vok123",
+  "license": "ISC",
+  "description": "live websocket",
+  "devDependencies": {
+    "@swc/core": "^1.10.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}
