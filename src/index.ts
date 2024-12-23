@@ -68,8 +68,6 @@ export type Options = {
   /** default: 10000 */
   heartbeatInterval?: number;
   debug?: boolean;
-  resolvePing?(): Record<string, any>;
-  resolveSendMessages?(): any[];
   reconnectOnVisibility?: boolean;
   pageHiddenCloseTime?: number;
 };
@@ -101,7 +99,7 @@ export type ListenersMap = {
   close: Array<WebSocketEventListenerMap['close']>;
 };
 
-export default class ReconnectingWebSocket {
+export default class LiveWebSocket {
   private _ws?: WebSocket;
   private _listeners: ListenersMap = {
     error: [],
@@ -120,6 +118,13 @@ export default class ReconnectingWebSocket {
   private _messageQueue: Message[] = [];
   private _pingTimer: any;
   private _pongTimeoutTimer: any;
+  private _onVisibility = () => {
+    const isPageShow = document.visibilityState === 'visible';
+    this._pageHiddenTime = isPageShow ? null : Date.now();
+    if (this._closeCalled && isPageShow && this._ws.readyState === this.CLOSED) {
+      this.reconnect();
+    }
+  };
 
   private readonly _url: UrlProvider;
   private readonly _protocols?: string | string[];
@@ -132,7 +137,7 @@ export default class ReconnectingWebSocket {
     if (this._options.startClosed) {
       this._shouldReconnect = false;
     }
-    this._connect();
+    this._connect(true);
     this._listenOnVisibility();
   }
 
@@ -150,16 +155,16 @@ export default class ReconnectingWebSocket {
   }
 
   get CONNECTING() {
-    return ReconnectingWebSocket.CONNECTING;
+    return LiveWebSocket.CONNECTING;
   }
   get OPEN() {
-    return ReconnectingWebSocket.OPEN;
+    return LiveWebSocket.OPEN;
   }
   get CLOSING() {
-    return ReconnectingWebSocket.CLOSING;
+    return LiveWebSocket.CLOSING;
   }
   get CLOSED() {
-    return ReconnectingWebSocket.CLOSED;
+    return LiveWebSocket.CLOSED;
   }
 
   get binaryType() {
@@ -224,7 +229,7 @@ export default class ReconnectingWebSocket {
     if (this._ws) {
       return this._ws.readyState;
     }
-    return this._options.startClosed ? ReconnectingWebSocket.CLOSED : ReconnectingWebSocket.CONNECTING;
+    return this._options.startClosed ? LiveWebSocket.CLOSED : LiveWebSocket.CONNECTING;
   }
 
   /**
@@ -254,24 +259,21 @@ export default class ReconnectingWebSocket {
    * this indicates that the connection is ready to send and receive data
    */
   public onopen: ((event: Event) => void) | null = null;
-
+  /**
+   * Triggered when reconnection is successful, you can resend the subscription parameters in this event
+   */
+  public onReconnect: ((ws: LiveWebSocket) => void) | null = null;
+  /**
+   * Before sending a ping to the server, you can send any agreed ping data to the server.
+   */
+  public onBeforePing: ((ws: LiveWebSocket) => void) | null = null;
   /**
    * Closes the WebSocket connection or connection attempt, if any. If the connection is already
    * CLOSED, this method does nothing
    */
   public close(code = 1000, reason?: string) {
-    this._closeCalled = true;
-    this._shouldReconnect = false;
-    this._clearTimeouts();
-    if (!this._ws) {
-      this._debug('close enqueued: no ws instance');
-      return;
-    }
-    if (this._ws.readyState === this.CLOSED) {
-      this._debug('close: already closed');
-      return;
-    }
-    this._ws.close(code, reason);
+    this._finishWs(code, reason);
+    this._removeVisibility();
   }
 
   /**
@@ -346,6 +348,21 @@ export default class ReconnectingWebSocket {
     this._removePong();
   }
 
+  public _finishWs(code = 1000, reason?: string) {
+    this._closeCalled = true;
+    this._shouldReconnect = false;
+    this._clearTimeouts();
+    if (!this._ws) {
+      this._debug('close enqueued: no ws instance');
+      return;
+    }
+    if (this._ws.readyState === this.CLOSED) {
+      this._debug('close: already closed');
+      return;
+    }
+    this._ws.close(code, reason);
+  }
+
   private _debug(...args: any[]) {
     if (this._options.debug) {
       // not using spread because compiled version uses Symbols
@@ -394,7 +411,7 @@ export default class ReconnectingWebSocket {
     throw Error('Invalid URL');
   }
 
-  private _connect() {
+  private _connect(isInit = false) {
     if (this._connectLock || !this._shouldReconnect) {
       return;
     }
@@ -430,7 +447,9 @@ export default class ReconnectingWebSocket {
         this._ws!.binaryType = this._binaryType;
         this._connectLock = false;
         this._addListeners();
-
+        if (!isInit) {
+          this.onReconnect?.(this);
+        }
         this._connectTimeout = setTimeout(() => this._handleTimeout(), connectionTimeout);
       });
   }
@@ -472,44 +491,31 @@ export default class ReconnectingWebSocket {
     }
   }
 
-  private _resolveSendMessages() {
-    const { resolveSendMessages } = this._options;
-    if (resolveSendMessages) {
-      const msgList = resolveSendMessages();
-      this._messageQueue.push(...msgList);
-    }
-  }
-
   private _handlePong() {
-    if (!this._options.resolvePing) {
-      return;
-    }
     this._debug('pong');
     clearTimeout(this._pongTimeoutTimer);
     this._pongTimeoutTimer = setTimeout(() => {
-      this._resolveSendMessages();
-      this.close(3001, 'pong timeout');
+      this._finishWs(3001, 'pong timeout');
       this.reconnect();
     }, this._options.pongTimeoutInterval);
   }
 
   private _removePing() {
-    this._pingTimer && clearInterval(this._pingTimer);
+    clearInterval(this._pingTimer);
   }
 
   private _removePong() {
-    this._pongTimeoutTimer && clearTimeout(this._pongTimeoutTimer);
+    clearTimeout(this._pongTimeoutTimer);
   }
   private _handlePing() {
-    const { resolvePing } = this._options;
-    if (!resolvePing) {
+    const { onBeforePing } = this;
+    if (!onBeforePing) {
       return;
     }
     this._debug('ping');
     this._removePing();
     this._pingTimer = setInterval(() => {
-      const data = resolvePing();
-      this.send(JSON.stringify(data));
+      onBeforePing(this);
       this._handlePong();
     }, this._options.heartbeatInterval);
   }
@@ -523,6 +529,7 @@ export default class ReconnectingWebSocket {
 
     this._ws!.binaryType = this._binaryType;
     // send enqueued messages (messages sent before websocket open event)
+    this._debug('send enqueued messages', this._messageQueue);
     this._messageQueue.forEach((message) => this._ws?.send(message));
     this._messageQueue = [];
 
@@ -534,12 +541,10 @@ export default class ReconnectingWebSocket {
     this._listeners.open.forEach((listener) => this._callEventListener(event, listener));
   };
 
-  private _checkReconnect() {
+  private _checkPageHidden() {
     if (this._options.reconnectOnVisibility && this._pageHiddenTime) {
-      const { pageHiddenCloseTime = 0 } = this._options;
-      if (Date.now() - this._pageHiddenTime > pageHiddenCloseTime) {
-        this.close(3002, 'page hidden');
-        this._resolveSendMessages();
+      if (Date.now() - this._pageHiddenTime > this._options.pageHiddenCloseTime) {
+        this._finishWs(3002, 'page hidden');
       }
     }
   }
@@ -551,7 +556,7 @@ export default class ReconnectingWebSocket {
       this.onmessage(event);
     }
 
-    this._checkReconnect();
+    this._checkPageHidden();
 
     this._listeners.message.forEach((listener) => this._callEventListener(event, listener));
   };
@@ -607,19 +612,16 @@ export default class ReconnectingWebSocket {
     this._ws.addEventListener('error', this._handleError);
   }
 
+  private _removeVisibility() {
+    document.removeEventListener('visibilitychange', this._onVisibility);
+  }
+
   private _listenOnVisibility() {
     if (!this._options.reconnectOnVisibility) {
       return;
     }
-    const onVisibility = () => {
-      const isWindowActive = document.visibilityState === 'visible';
-      this._pageHiddenTime = isWindowActive ? null : Date.now();
-      if (this._closeCalled && isWindowActive && this._ws?.readyState === this.CLOSED) {
-        this.reconnect();
-      }
-    };
-    document.removeEventListener('visibilitychange', onVisibility);
-    document.addEventListener('visibilitychange', onVisibility);
+    this._removeVisibility();
+    document.addEventListener('visibilitychange', this._onVisibility);
   }
 
   private _clearTimeouts() {
