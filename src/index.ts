@@ -121,7 +121,9 @@ export default class LiveWebSocket {
   private _onVisibility = () => {
     const isPageShow = document.visibilityState === 'visible';
     this._pageHiddenTime = isPageShow ? null : Date.now();
-    if (this._closeCalled && isPageShow && this._ws.readyState === this.CLOSED) {
+    this._debug('visibilitychange', isPageShow, this.CLOSED);
+    if (isPageShow && (!this._ws || this._ws?.readyState === this.CLOSED)) {
+      this._retryCount = 0;
       this.reconnect();
     }
   };
@@ -351,6 +353,7 @@ export default class LiveWebSocket {
   public _finishWs(code = 1000, reason?: string) {
     this._closeCalled = true;
     this._shouldReconnect = false;
+    this._connectLock = false;
     this._clearTimeouts();
     if (!this._ws) {
       this._debug('close enqueued: no ws instance');
@@ -412,21 +415,26 @@ export default class LiveWebSocket {
   }
 
   private _connect(isInit = false) {
+    this._debug('connect call', this._connectLock, this._shouldReconnect);
     if (this._connectLock || !this._shouldReconnect) {
       return;
     }
-    this._connectLock = true;
+
+    if (document.visibilityState === 'hidden') {
+      return;
+    }
 
     const {
       maxRetries = DEFAULT.maxRetries,
       connectionTimeout = DEFAULT.connectionTimeout,
       WebSocket = getGlobalWebSocket()
     } = this._options;
-
+    this._debug('retryCount', this._retryCount, 'maxRetries', maxRetries);
     if (this._retryCount >= maxRetries) {
       this._debug('max retries reached', this._retryCount, '>=', maxRetries);
       return;
     }
+    this._connectLock = true;
 
     this._retryCount++;
 
@@ -545,6 +553,7 @@ export default class LiveWebSocket {
     if (this._options.reconnectOnVisibility && this._pageHiddenTime) {
       if (Date.now() - this._pageHiddenTime > this._options.pageHiddenCloseTime) {
         this._finishWs(3002, 'page hidden');
+        this._debug('page hidden close');
       }
     }
   }
@@ -563,8 +572,8 @@ export default class LiveWebSocket {
 
   private _handleError = (event: ErrorEvent) => {
     this._debug('error event', event.message);
+    this._connectLock = false;
     this._disconnect(undefined, event.message === 'TIMEOUT' ? 'timeout' : undefined);
-
     if (this.onerror) {
       this.onerror(event);
     }
@@ -577,6 +586,7 @@ export default class LiveWebSocket {
   private _handleClose = (event: CloseEvent) => {
     this._debug('close event');
     this._clearTimeouts();
+    this._connectLock = false;
 
     if (this._shouldReconnect) {
       this._connect();
