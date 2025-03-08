@@ -3,6 +3,7 @@
 WebSocket that will automatically reconnect if the connection is closed.
 
 ## More docs
+
 [中文文档](https://github.com/vok123/live-ws/blob/main/README-ZH_CN.md)
 
 ## Features
@@ -39,11 +40,12 @@ request :)
 ```javascript
 import LiveWs from 'live-ws';
 
-const rws = new LiveWs('ws://my.site.com');
+const liveWs = new LiveWs('ws://my.site.com');
 
-rws.addEventListener('open', () => {
-  rws.send('hello!');
-});
+liveWs.onopen = () => {
+  liveWs.send('Hello');
+};
+
 ```
 
 ### Update URL
@@ -63,7 +65,7 @@ let urlIndex = 0;
 // round robin url provider
 const urlProvider = () => urls[urlIndex++ % urls.length];
 
-const rws = new LiveWs(urlProvider);
+const liveWs = new LiveWs(urlProvider);
 ```
 
 ```javascript
@@ -75,7 +77,7 @@ const urlProvider = async () => {
   return `wss://my.site.com/${token}`;
 };
 
-const rws = new LiveWs(urlProvider);
+const liveWs = new LiveWs(urlProvider);
 ```
 
 ### Options
@@ -89,15 +91,19 @@ import WS from 'ws';
 const options = {
   WebSocket: WS, // custom WebSocket constructor
   connectionTimeout: 1000,
-  maxRetries: 10,
+  maxRetries: 10
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
 ```
 
 #### Sample with heartbeat
 
 ```javascript
 import LiveWs from 'live-ws';
+
+const params = {
+  channel: 'test'
+};
 
 const options = {
   connectionTimeout: 1000,
@@ -107,29 +113,38 @@ const options = {
   // Server response pong timeout 2 seconds
   pongTimeoutInterval: 2000,
   // Custom ping parameters
-  resolvePing() {
-    return { event: 'ping' };
+  onBeforePing(liveWs) {
+    return liveWs.send(JSON.stringify({ event: 'ping' }));
   },
   // Customize reconnection send parameters
-  resolveSendMessages() {
-    return [JSON.stringify({ channel: 'xxx', params: 'xxx' })]
+  onReconnect(liveWs) {
+    return JSON.stringify(params);
   }
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
 
-rws.onmessage = (res) => {
+liveWs.onmessage = (res) => {
   const data = JSON.parse(res.data);
   // Here we need to determine how the server responds to pong
   if (data.event === 'pong') {
-    rws.heartbeatHealth();
+    liveWs.heartbeatHealth();
   }
 };
+
+liveWs.onopen = () => {
+  liveWs.send(JSON.stringify(params));
+};
+
 ```
 
 #### Sample with page hidden
 
 ```javascript
 import LiveWs from 'live-ws';
+
+const params = {
+  channel: 'test'
+};
 
 const options = {
   connectionTimeout: 1000,
@@ -139,38 +154,49 @@ const options = {
   // Websocket disconnection time after hiding the page
   pageHiddenCloseTime: 5 * 60 * 1000,
   // Customize reconnection send parameters
-  resolveSendMessages() {
-    return [JSON.stringify({ channel: 'xxx', params: 'xxx' })]
+  onReconnect(liveWs) {
+    return JSON.stringify(params);
   }
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
+
+liveWs.onopen = () => {
+  liveWs.send(JSON.stringify(params));
+};
+
 ```
 
 #### Available options
 
 ```typescript
 type Options = {
-  WebSocket?: any; // WebSocket constructor, if none provided, defaults to global WebSocket
-  maxReconnectionDelay?: number; // max delay in ms between reconnections
-  minReconnectionDelay?: number; // min delay in ms between reconnections
-  reconnectionDelayGrowFactor?: number; // how fast the reconnection delay grows
-  minUptime?: number; // min time in ms to consider connection as stable
-  connectionTimeout?: number; // retry connect if not connected after this time, in ms
-  maxRetries?: number; // maximum number of retries
-  maxEnqueuedMessages?: number; // maximum number of messages to buffer until reconnection
-  startClosed?: boolean; // start websocket in CLOSED state, call `.reconnect()` to connect
-  debug?: boolean; // enables debug output
-  // Send a heartbeat time
-  heartbeatInterval?: number,
-  // Server response pong timeout
-  pongTimeoutInterval?: number,
-  // Custom ping parameters
-  resolvePing?(): Record<string, any>;
-  // Customize reconnection send parameters
-  resolveSendMessages?(): any[];
-  // Whether to enable automatic disconnection when the page is hidden
+  /** Custom WebSocket class to use */
+  WebSocket?: any;
+  /** Maximum delay between reconnection attempts in milliseconds (default: 10000) */
+  maxReconnectionDelay?: number;
+  /** Minimum delay between reconnection attempts in milliseconds (default: 1000 + random) */
+  minReconnectionDelay?: number;
+  /** Factor by which reconnection delay increases with each attempt (default: 1.3) */
+  reconnectionDelayGrowFactor?: number;
+  /** Minimum time in milliseconds that a connection should remain open to be considered stable (default: 5000) */
+  minUptime?: number;
+  /** Timeout in milliseconds for connection attempts (default: 4000) */
+  connectionTimeout?: number;
+  /** Maximum number of reconnection attempts (default: Infinity) */
+  maxRetries?: number;
+  /** Maximum number of messages to queue while waiting for connection (default: Infinity) */
+  maxEnqueuedMessages?: number;
+  /** Whether to start in closed state rather than connecting immediately (default: false) */
+  startClosed?: boolean;
+  /** Timeout in milliseconds for pong response before declaring connection dead (default: 2000) */
+  pongTimeoutInterval?: number;
+  /** Interval in milliseconds between heartbeat pings (default: 10000) */
+  heartbeatInterval?: number;
+  /** Enable verbose debug logging (default: false) */
+  debug?: boolean;
+  /** Whether to attempt reconnection when page becomes visible (default: true) */
   reconnectOnVisibility?: boolean;
-  // Websocket disconnection time after hiding the page
+  /** Time in milliseconds after page is hidden to close the connection (default: 5 minutes) */
   pageHiddenCloseTime?: number;
 };
 ```
@@ -178,18 +204,21 @@ type Options = {
 #### Default values
 
 ```javascript
-WebSocket: undefined,
-maxReconnectionDelay: 10000,
-minReconnectionDelay: 1000 + Math.random() * 4000,
-reconnectionDelayGrowFactor: 1.3,
-minUptime: 5000,
-connectionTimeout: 4000,
-maxRetries: Infinity,
-maxEnqueuedMessages: Infinity,
-startClosed: false,
-debug: false,
-reconnectOnVisibility: true,
-pageHiddenCloseTime: 5 * 60 * 1000,
+{
+  maxReconnectionDelay: 10000,
+  minReconnectionDelay: 1000 + Math.random() * 4000,
+  minUptime: 5000,
+  reconnectionDelayGrowFactor: 1.3,
+  connectionTimeout: 4000,
+  pongTimeoutInterval: 2000,
+  heartbeatInterval: 10000,
+  maxRetries: Infinity,
+  maxEnqueuedMessages: Infinity,
+  startClosed: false,
+  reconnectOnVisibility: true,
+  pageHiddenCloseTime: 5 * 60 * 1000,
+  debug: false
+}
 ```
 
 ## API

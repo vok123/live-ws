@@ -1,17 +1,21 @@
 # Live Ws
 
-一个能够在连接关闭时自动重新连接的 WebSocket。
+号称永不断线，自动重连WebSocket，像舔狗一样，一定要重新连接上
 
-## 功能特点
+## 更多文档
 
-- 与 WebSocket API 的兼容（相同的接口，支持 Level0 和 Level2 事件模型）
+[中文文档](https://github.com/vok123/live-ws/blob/main/README-ZH_CN.md)
+
+## 特性
+
+- 兼容WebSocket API（相同的接口，Level0和Level2事件模型）
 - 完全可配置
-- 无依赖（不依赖 Window、DOM 或任何 EventEmitter 库）
+- 无依赖（不依赖Window、DOM或任何EventEmitter库）
 - 处理连接超时
-- 支持在重新连接之间更改服务器 URL
-- 消息缓冲。在连接打开时会发送累积的消息
-- 提供多种构建版本（参考 dist 文件夹）
-- 支持自定义心跳机制
+- 允许在重新连接之间更改服务器URL
+- 缓冲功能。在连接建立后发送累积的消息
+- 提供多种构建版本（见dist文件夹）
+- 自定义心跳支持
 - 页面隐藏处理
 - 调试模式
 
@@ -23,34 +27,32 @@ npm install --save live-ws
 
 ## 使用方法
 
-### 与浏览器的 WebSocket API 兼容
+### 兼容WebSocket浏览器API
 
-因此，你可以参考以下文档使用：
+因此以下文档应该有效：
 [MDN WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)。
 
-如果你发现任何问题，请联系我。或者更好的是，为你的用例编写测试并提交一个 pull request :)
+如果您发现任何问题，请联系我。或者，更好的是，为您的情况编写测试并提交拉取请求 :)
 
-### 简单示例
+### 简单使用
 
 ```javascript
 import LiveWs from 'live-ws';
 
-const rws = new LiveWs('ws://my.site.com');
+const liveWs = new LiveWs('ws://my.site.com');
 
-rws.addEventListener('open', () => {
-  rws.send('hello!');
-});
+liveWs.onopen = () => {
+  liveWs.send('Hello');
+};
 ```
 
-### 更新 URL
+### 更新URL
 
-`url` 参数会在连接前被解析，支持以下几种类型：
+`url`参数将在连接前被解析，可能的类型：
 
 - `string`
 - `() => string`
 - `() => Promise<string>`
-
-#### 轮询 URL 提供者示例
 
 ```javascript
 import LiveWs from 'live-ws';
@@ -58,119 +60,139 @@ import LiveWs from 'live-ws';
 const urls = ['ws://my.site.com', 'ws://your.site.com', 'ws://their.site.com'];
 let urlIndex = 0;
 
-// 轮询 URL 提供者
+// 轮询URL提供者
 const urlProvider = () => urls[urlIndex++ % urls.length];
 
-const rws = new LiveWs(urlProvider);
+const liveWs = new LiveWs(urlProvider);
 ```
-
-#### 异步 URL 提供者示例
 
 ```javascript
 import LiveWs from 'live-ws';
 
-// 异步 URL 提供者
+// 异步URL提供者
 const urlProvider = async () => {
   const token = await getSessionToken();
   return `wss://my.site.com/${token}`;
 };
 
-const rws = new LiveWs(urlProvider);
+const liveWs = new LiveWs(urlProvider);
 ```
 
-### 配置项
+### 选项
 
-#### 自定义配置示例
+#### 自定义选项示例
 
 ```javascript
 import LiveWs from 'live-ws';
 import WS from 'ws';
 
 const options = {
-  WebSocket: WS, // 自定义 WebSocket 构造函数
+  WebSocket: WS, // 自定义WebSocket构造函数
   connectionTimeout: 1000,
-  maxRetries: 10,
+  maxRetries: 10
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
 ```
 
-#### 带心跳机制的示例
+#### 心跳示例
 
 ```javascript
 import LiveWs from 'live-ws';
 
+const params = {
+  channel: 'test'
+};
+
 const options = {
   connectionTimeout: 1000,
   maxRetries: 10,
-  // 每 10 秒发送一个心跳
+  // 每10秒发送一次心跳
   heartbeatInterval: 10000,
-  // 服务器响应 pong 超时时间为 2 秒
+  // 服务器响应pong超时2秒
   pongTimeoutInterval: 2000,
-  // 自定义 ping 参数
-  resolvePing() {
-    return { event: 'ping' };
+  // 自定义ping参数
+  onBeforePing(liveWs) {
+    return liveWs.send(JSON.stringify({ event: 'ping' }));
   },
-  // 自定义重连发送的消息参数
-  resolveSendMessages() {
-    return [JSON.stringify({ channel: 'xxx', params: 'xxx' })]
+  // 自定义重连时发送的参数
+  onReconnect(liveWs) {
+    return JSON.stringify(params);
   }
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
 
-rws.onmessage = (res) => {
+liveWs.onmessage = (res) => {
   const data = JSON.parse(res.data);
-  // 确定服务器如何响应 pong 消息
+  // 这里需要判断服务器如何响应pong
   if (data.event === 'pong') {
-    rws.heartbeatHealth();
+    liveWs.heartbeatHealth();
   }
+};
+
+liveWs.onopen = () => {
+  liveWs.send(JSON.stringify(params));
 };
 ```
 
-#### 页面隐藏处理的示例
+#### 页面隐藏示例
 
 ```javascript
 import LiveWs from 'live-ws';
 
+const params = {
+  channel: 'test'
+};
+
 const options = {
   connectionTimeout: 1000,
   maxRetries: 10,
-  // 是否在页面隐藏时自动断开连接
+  // 是否启用页面隐藏时自动断开连接
   reconnectOnVisibility: true,
-  // 页面隐藏后 WebSocket 断开时间
+  // 页面隐藏后Websocket断开连接的时间
   pageHiddenCloseTime: 5 * 60 * 1000,
-  // 自定义重连发送的消息参数
-  resolveSendMessages() {
-    return [JSON.stringify({ channel: 'xxx', params: 'xxx' })]
+  // 自定义重连时发送的参数
+  onReconnect(liveWs) {
+    return JSON.stringify(params);
   }
 };
-const rws = new LiveWs('ws://my.site.com', [], options);
+const liveWs = new LiveWs('ws://my.site.com', [], options);
+
+liveWs.onopen = () => {
+  liveWs.send(JSON.stringify(params));
+};
 ```
 
-#### 可用配置项
+#### 可用选项
 
 ```typescript
 type Options = {
-  WebSocket?: any; // WebSocket 构造函数，默认使用全局 WebSocket
-  maxReconnectionDelay?: number; // 重连之间的最大延迟时间（毫秒）
-  minReconnectionDelay?: number; // 重连之间的最小延迟时间（毫秒）
-  reconnectionDelayGrowFactor?: number; // 重连延迟增长因子
-  minUptime?: number; // 稳定连接所需的最短时间（毫秒）
-  connectionTimeout?: number; // 如果超过此时间未连接，则重试连接（毫秒）
-  maxRetries?: number; // 最大重试次数
-  maxEnqueuedMessages?: number; // 重连时最多缓存的消息数量
-  startClosed?: boolean; // 以 CLOSED 状态启动 WebSocket，需调用 `.reconnect()` 连接
-  debug?: boolean; // 是否启用调试输出
-  // 心跳间隔时间
-  heartbeatInterval?: number,
-  // 服务器响应 pong 消息的超时时间
-  pongTimeoutInterval?: number,
-  // 自定义 ping 参数
-  resolvePing?(): Record<string, any>;
-  // 自定义重连发送的消息参数
-  resolveSendMessages?(): any[];
-  // 是否在页面隐藏时自动断开连接
+  /** 自定义WebSocket类 */
+  WebSocket?: any;
+  /** 重新连接尝试之间的最大延迟（毫秒）（默认：10000） */
+  maxReconnectionDelay?: number;
+  /** 重新连接尝试之间的最小延迟（毫秒）（默认：1000 + 随机数） */
+  minReconnectionDelay?: number;
+  /** 重新连接延迟随每次尝试增加的系数（默认：1.3） */
+  reconnectionDelayGrowFactor?: number;
+  /** 连接保持打开状态被认为稳定的最小时间（毫秒）（默认：5000） */
+  minUptime?: number;
+  /** 连接尝试的超时时间（毫秒）（默认：4000） */
+  connectionTimeout?: number;
+  /** 最大重新连接尝试次数（默认：Infinity） */
+  maxRetries?: number;
+  /** 等待连接时排队的最大消息数（默认：Infinity） */
+  maxEnqueuedMessages?: number;
+  /** 是否以关闭状态启动而不是立即连接（默认：false） */
+  startClosed?: boolean;
+  /** pong响应超时时间，超过该时间认为连接已死亡（毫秒）（默认：2000） */
+  pongTimeoutInterval?: number;
+  /** 心跳ping的间隔时间（毫秒）（默认：10000） */
+  heartbeatInterval?: number;
+  /** 启用详细调试日志（默认：false） */
+  debug?: boolean;
+  /** 页面变为可见时是否尝试重新连接（默认：true） */
   reconnectOnVisibility?: boolean;
-  // 页面隐藏后 WebSocket 断开时间
+  /** 页面隐藏后关闭连接的时间（毫秒）（默认：5分钟） */
   pageHiddenCloseTime?: number;
 };
 ```
@@ -178,21 +200,24 @@ type Options = {
 #### 默认值
 
 ```javascript
-WebSocket: undefined,
-maxReconnectionDelay: 10000,
-minReconnectionDelay: 1000 + Math.random() * 4000,
-reconnectionDelayGrowFactor: 1.3,
-minUptime: 5000,
-connectionTimeout: 4000,
-maxRetries: Infinity,
-maxEnqueuedMessages: Infinity,
-startClosed: false,
-debug: false,
-reconnectOnVisibility: true,
-pageHiddenCloseTime: 5 * 60 * 1000,
+{
+  maxReconnectionDelay: 10000,
+  minReconnectionDelay: 1000 + Math.random() * 4000,
+  minUptime: 5000,
+  reconnectionDelayGrowFactor: 1.3,
+  connectionTimeout: 4000,
+  pongTimeoutInterval: 2000,
+  heartbeatInterval: 10000,
+  maxRetries: Infinity,
+  maxEnqueuedMessages: Infinity,
+  startClosed: false,
+  reconnectOnVisibility: true,
+  pageHiddenCloseTime: 5 * 60 * 1000,
+  debug: false
+}
 ```
 
-## API 文档
+## API
 
 ### 方法
 
@@ -231,18 +256,18 @@ retryCount: number;
 ### 常量
 
 ```text
-CONNECTING 0 连接尚未打开
-OPEN       1 连接已打开并准备好通信
-CLOSING    2 连接正在关闭过程中
-CLOSED     3 连接已关闭或无法打开
+CONNECTING 0 连接尚未打开。
+OPEN       1 连接已打开并准备好通信。
+CLOSING    2 连接正在关闭过程中。
+CLOSED     3 连接已关闭或无法打开。
 ```
 
 ## 致谢
 
-项目基于 [reconnecting-websocket](https://github.com/pladaria/reconnecting-websocket) 开发，向其出色的工作致敬。
+本项目基于[reconnecting-websocket](https://github.com/pladaria/reconnecting-websocket)及其出色的工作。
 
-如果你觉得这个项目有用，不妨看看原始库并支持其创造者。
+如果您发现本项目有用，请考虑查看原始仓库并向其创建者表示支持。
 
 ## 许可证
 
-MIT License
+MIT

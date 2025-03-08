@@ -53,22 +53,37 @@ const getGlobalWebSocket = (): WebSocket | undefined => {
  */
 const isWebSocket = (w: any) => typeof w !== 'undefined' && !!w && w.CLOSING === 2;
 
+/**
+ * Configuration options for LiveWebSocket
+ */
 export type Options = {
+  /** Custom WebSocket class to use */
   WebSocket?: any;
+  /** Maximum delay between reconnection attempts in milliseconds (default: 10000) */
   maxReconnectionDelay?: number;
+  /** Minimum delay between reconnection attempts in milliseconds (default: 1000 + random) */
   minReconnectionDelay?: number;
+  /** Factor by which reconnection delay increases with each attempt (default: 1.3) */
   reconnectionDelayGrowFactor?: number;
+  /** Minimum time in milliseconds that a connection should remain open to be considered stable (default: 5000) */
   minUptime?: number;
+  /** Timeout in milliseconds for connection attempts (default: 4000) */
   connectionTimeout?: number;
+  /** Maximum number of reconnection attempts (default: Infinity) */
   maxRetries?: number;
+  /** Maximum number of messages to queue while waiting for connection (default: Infinity) */
   maxEnqueuedMessages?: number;
+  /** Whether to start in closed state rather than connecting immediately (default: false) */
   startClosed?: boolean;
-  /** default: 2000 */
+  /** Timeout in milliseconds for pong response before declaring connection dead (default: 2000) */
   pongTimeoutInterval?: number;
-  /** default: 10000 */
+  /** Interval in milliseconds between heartbeat pings (default: 10000) */
   heartbeatInterval?: number;
+  /** Enable verbose debug logging (default: false) */
   debug?: boolean;
+  /** Whether to attempt reconnection when page becomes visible (default: true) */
   reconnectOnVisibility?: boolean;
+  /** Time in milliseconds after page is hidden to close the connection (default: 5 minutes) */
   pageHiddenCloseTime?: number;
 };
 
@@ -551,9 +566,11 @@ export default class LiveWebSocket {
 
   private _checkPageHidden() {
     if (this._options.reconnectOnVisibility && this._pageHiddenTime) {
-      if (Date.now() - this._pageHiddenTime > this._options.pageHiddenCloseTime) {
-        this._finishWs(3002, 'page hidden');
-        this._debug('page hidden close');
+      if (this._options.pageHiddenCloseTime) {
+        if (Date.now() - this._pageHiddenTime > this._options.pageHiddenCloseTime) {
+          this._finishWs(3002, 'page hidden');
+          this._debug('page hidden close');
+        }
       }
     }
   }

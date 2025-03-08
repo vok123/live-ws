@@ -1,6 +1,6 @@
 {
   "name": "live-ws",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "scripts": {
     "build": "tsup --target es5",
     "dev": "tsup --watch"
